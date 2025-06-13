@@ -1,4 +1,4 @@
-# BOE Data Export
+# BOE Data Export 📜
 
 Repo to download all BOE (Boletín Oficial del Estado) PDFs.
 
