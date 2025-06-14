@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import httpx
+from tqdm.asyncio import tqdm
 
 API_URL = "https://www.boe.es/datosabiertos/api/boe/sumario/{date}"
 OUTPUT_DIR = Path("boe")
@@ -106,7 +107,7 @@ async def download_boe_pdfs(
         current += timedelta(days=1)
 
     print(
-        f"Processing {len(dates)} days from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
+        f"Processing {len(dates)} days from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}\n"
     )
 
     stats = {"downloaded": 0, "no_boe": 0, "errors": 0, "cached": 0}
@@ -119,13 +120,17 @@ async def download_boe_pdfs(
             async with sem:
                 return await process_date(session, date, output_dir)
 
-        # Process all dates with progress indication
+        # Process all dates with progress bar
         tasks = [process_with_limit(date) for date in dates]
-        results = await asyncio.gather(*tasks)
-
-        # Aggregate results
-        for i, result in enumerate(results):
-            count, status = result
+        
+        # Use tqdm to show progress
+        results = []
+        for result in tqdm.as_completed(tasks, total=len(tasks), desc="Downloading BOE PDFs"):
+            res = await result
+            results.append(res)
+            
+            # Update stats in real-time
+            count, status = res
             stats["downloaded"] += count
             if status == "no_boe":
                 stats["no_boe"] += 1
@@ -134,15 +139,8 @@ async def download_boe_pdfs(
             elif status == "cached":
                 stats["cached"] += 1
 
-            # Progress indicator every 365 days
-            if (i + 1) % 365 == 0:
-                elapsed = time.time() - start_time
-                print(
-                    f"Progress: {i + 1}/{len(dates)} days processed in {elapsed:.1f}s"
-                )
-
     elapsed = time.time() - start_time
-    print(f"\nCompleted in {elapsed:.1f} seconds")
+    print(f"\n\nCompleted in {elapsed:.1f} seconds")
     print(f"Downloaded: {stats['downloaded']} PDFs")
     print(f"Already cached: {stats['cached']} PDFs")
     print(f"Days without BOE: {stats['no_boe']}")
