@@ -8,6 +8,29 @@ on:
 jobs:
   export:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        year_range:
+          - { start: "1961-01-01", end: "1964-12-31" }
+          - { start: "1965-01-01", end: "1968-12-31" }
+          - { start: "1969-01-01", end: "1972-12-31" }
+          - { start: "1973-01-01", end: "1976-12-31" }
+          - { start: "1977-01-01", end: "1980-12-31" }
+          - { start: "1981-01-01", end: "1984-12-31" }
+          - { start: "1985-01-01", end: "1988-12-31" }
+          - { start: "1989-01-01", end: "1992-12-31" }
+          - { start: "1993-01-01", end: "1996-12-31" }
+          - { start: "1997-01-01", end: "2000-12-31" }
+          - { start: "2001-01-01", end: "2004-12-31" }
+          - { start: "2005-01-01", end: "2008-12-31" }
+          - { start: "2009-01-01", end: "2011-12-31" }
+          - { start: "2012-01-01", end: "2014-12-31" }
+          - { start: "2015-01-01", end: "2017-12-31" }
+          - { start: "2018-01-01", end: "2019-12-31" }
+          - { start: "2020-01-01", end: "2021-12-31" }
+          - { start: "2022-01-01", end: "2023-12-31" }
+          - { start: "2024-01-01", end: "2025-01-31" }
+          - { start: "2025-02-01", end: "2026-12-31" }
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -15,8 +38,11 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v4
 
-      - name: Download BOE PDFs
-        run: make run
+      - name: Download BOE PDFs for ${{ matrix.year_range.start }} to ${{ matrix.year_range.end }}
+        run: |
+          uv run python boe.py \
+            --start-date "${{ matrix.year_range.start }}" \
+            --end-date "${{ matrix.year_range.end }}"
 
       - name: Upload to Hugging Face
         run: make upload
