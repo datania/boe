@@ -16,5 +16,11 @@ setup: .uv
 run: .uv
 	uv run boe.py
 
+upload:
+	uvx --from "huggingface_hub[hf_xet]" huggingface-cli upload-large-folder \
+		--token=${HUGGINGFACE_TOKEN} \
+		--repo-type dataset \
+		datania/boe boe/
+
 clean:
 	rm -rf boe/
