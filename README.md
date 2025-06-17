@@ -1,20 +1,20 @@
-# BOE Data Export 📜
+# Exportación de Datos del BOE 📜
 
-Repo to download all BOE (Boletín Oficial del Estado) PDFs.
+Repositorio para descargar todos los PDFs del BOE (Boletín Oficial del Estado).
 
-## Setup
+## 🛠️ Configuración
 
 ```bash
 make setup
 ```
 
-## Usage
+## 🚀 Uso
 
 ```bash
 make run
 ```
 
-PDFs will be downloaded to the `boe/` directory with the structure:
+Los PDFs se descargarán en el directorio `boe/` con la estructura:
 
 ```
 boe/
@@ -23,3 +23,7 @@ boe/
         └── DD/
             └── boe.pdf
 ```
+
+## 📄 Licencia
+
+MIT.
