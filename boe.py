@@ -122,13 +122,15 @@ async def download_boe_pdfs(
 
         # Process all dates with progress bar
         tasks = [process_with_limit(date) for date in dates]
-        
+
         # Use tqdm to show progress
         results = []
-        for result in tqdm.as_completed(tasks, total=len(tasks), desc="Downloading BOE PDFs"):
+        for result in tqdm.as_completed(
+            tasks, total=len(tasks), desc="Downloading BOE PDFs"
+        ):
             res = await result
             results.append(res)
-            
+
             # Update stats in real-time
             count, status = res
             stats["downloaded"] += count
