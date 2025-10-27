@@ -1,4 +1,4 @@
-# Exportación de Datos del BOE 📜
+# Datos del BOE 📜
 
 Repositorio para descargar todos los PDFs del BOE (Boletín Oficial del Estado).
 
