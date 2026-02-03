@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import httpx
+from markitdown import MarkItDown
 from tqdm.asyncio import tqdm
 
 API_URL = "https://www.boe.es/datosabiertos/api/boe/sumario/{date}"
@@ -32,16 +33,39 @@ async def download_pdf(session: httpx.AsyncClient, url: str, path: Path) -> None
                 raise e
 
 
+def convert_pdf_to_markdown(pdf_path: Path, md_path: Path) -> None:
+    md_path.parent.mkdir(parents=True, exist_ok=True)
+    converter = MarkItDown(enable_plugins=False)
+    result = converter.convert(str(pdf_path))
+    md_path.write_text(result.text_content, encoding="utf-8")
+
+
+async def ensure_markdown(pdf_path: Path, md_path: Path) -> bool:
+    if md_path.exists():
+        return False
+
+    await asyncio.to_thread(convert_pdf_to_markdown, pdf_path, md_path)
+    return True
+
+
 async def process_date(
     session: httpx.AsyncClient, date: datetime, output_dir: Path
-) -> tuple[int, str]:
+) -> tuple[int, int, str]:
     """Process BOE for a specific date with retry logic."""
     date_str = date.strftime("%Y%m%d")
 
-    # Check if PDF already exists (caching)
     pdf_path = output_dir / date.strftime("%Y/%m/%d") / "boe.pdf"
-    if pdf_path.exists():
-        return 0, "cached"
+    md_path = pdf_path.with_suffix(".md")
+    if pdf_path.exists() and md_path.exists():
+        return 0, 0, "cached"
+
+    if pdf_path.exists() and not md_path.exists():
+        try:
+            generated = await ensure_markdown(pdf_path, md_path)
+        except Exception as e:
+            print(f"Failed to generate markdown for {date_str}: {e}")
+            return 0, 0, "error"
+        return 0, int(generated), "success"
 
     data = None
 
@@ -52,7 +76,7 @@ async def process_date(
             )
 
             if response.status_code == 404:
-                return 0, "no_boe"
+                return 0, 0, "no_boe"
 
             response.raise_for_status()
             data = response.json()
@@ -62,10 +86,10 @@ async def process_date(
                 await asyncio.sleep(RETRY_DELAY * (attempt + 1))
             else:
                 print(f"Failed after {MAX_RETRIES} attempts for {date_str}: {e}")
-                return 0, "error"
+                return 0, 0, "error"
 
     if data is None:
-        return 0, "error"
+        return 0, 0, "error"
 
     # Extract PDFs from response
     pdfs = []
@@ -81,22 +105,28 @@ async def process_date(
 
     # Download PDFs
     downloaded = 0
+    generated_md = 0
     for pdf_url, identifier in pdfs:
         pdf_path = output_dir / date.strftime("%Y/%m/%d") / "boe.pdf"
+        md_path = pdf_path.with_suffix(".md")
 
         try:
-            await download_pdf(session, pdf_url, pdf_path)
-            downloaded += 1
-        except Exception as e:
-            print(f"Failed to download {identifier} for {date_str}: {e}")
+            if not pdf_path.exists():
+                await download_pdf(session, pdf_url, pdf_path)
+                downloaded += 1
 
-    return downloaded, "success"
+            generated = await ensure_markdown(pdf_path, md_path)
+            generated_md += int(generated)
+        except Exception as e:
+            print(f"Failed to process {identifier} for {date_str}: {e}")
+
+    return downloaded, generated_md, "success"
 
 
 async def download_boe_pdfs(
     start_date: datetime, end_date: datetime, concurrency: int, output_dir: Path
 ):
-    """Download all BOE PDFs from start_date to end_date."""
+    """Download all BOE PDFs and Markdown files from start_date to end_date."""
     output_dir.mkdir(exist_ok=True)
 
     # Generate all dates
@@ -110,7 +140,13 @@ async def download_boe_pdfs(
         f"Processing {len(dates)} days from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}\n"
     )
 
-    stats = {"downloaded": 0, "no_boe": 0, "errors": 0, "cached": 0}
+    stats = {
+        "downloaded": 0,
+        "generated_md": 0,
+        "no_boe": 0,
+        "errors": 0,
+        "cached": 0,
+    }
     start_time = time.time()
 
     async with httpx.AsyncClient(timeout=60.0) as session:
@@ -126,14 +162,15 @@ async def download_boe_pdfs(
         # Use tqdm to show progress
         results = []
         for result in tqdm.as_completed(
-            tasks, total=len(tasks), desc="Downloading BOE PDFs"
+            tasks, total=len(tasks), desc="Processing BOE files"
         ):
             res = await result
             results.append(res)
 
             # Update stats in real-time
-            count, status = res
-            stats["downloaded"] += count
+            downloaded, generated_md, status = res
+            stats["downloaded"] += downloaded
+            stats["generated_md"] += generated_md
             if status == "no_boe":
                 stats["no_boe"] += 1
             elif status == "error":
@@ -144,14 +181,15 @@ async def download_boe_pdfs(
     elapsed = time.time() - start_time
     print(f"\n\nCompleted in {elapsed:.1f} seconds")
     print(f"Downloaded: {stats['downloaded']} PDFs")
-    print(f"Already cached: {stats['cached']} PDFs")
+    print(f"Generated: {stats['generated_md']} Markdown files")
+    print(f"Already cached: {stats['cached']} days")
     print(f"Days without BOE: {stats['no_boe']}")
     print(f"Errors: {stats['errors']}")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Download BOE PDFs from the Spanish Official Gazette."
+        description="Download BOE PDFs and Markdown files from the Spanish Official Gazette."
     )
     parser.add_argument(
         "-s",
