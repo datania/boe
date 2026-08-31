@@ -27,6 +27,8 @@ boe/
             └── boe.md
 ```
 
+Si se publican varios sumarios el mismo día, cada par de archivos usa su identificador BOE como nombre para evitar sobrescrituras.
+
 Para publicar los archivos en el dataset [`datania/boe`](https://huggingface.co/datasets/datania/boe):
 
 ```bash
