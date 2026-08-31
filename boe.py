@@ -98,7 +98,8 @@ async def process_date(
     session: httpx.AsyncClient, day: date, output_dir: Path
 ) -> Result:
     date_str = day.strftime("%Y%m%d")
-    pdf_path = output_dir / day.strftime("%Y/%m/%d") / "boe.pdf"
+    day_dir = output_dir / day.strftime("%Y/%m/%d")
+    pdf_path = day_dir / "boe.pdf"
     md_path = pdf_path.with_suffix(".md")
 
     if pdf_path.exists() and md_path.exists():
@@ -156,25 +157,32 @@ async def process_date(
         url_pdf = sumario.get("url_pdf")
         pdf_url = url_pdf.get("texto") if isinstance(url_pdf, dict) else None
         if isinstance(pdf_url, str):
-            identifier = str(sumario.get("identificador", "unknown"))
+            identifier = sumario.get("identificador")
+            if (
+                not isinstance(identifier, str)
+                or not identifier
+                or Path(identifier).name != identifier
+            ):
+                print(f"Invalid API response for {date_str}: invalid identifier")
+                return 0, 0, "error"
             pdfs.append((pdf_url, identifier))
-
-    if len(pdfs) > 1:
-        print(f"Invalid API response for {date_str}: expected at most one PDF")
-        return 0, 0, "error"
 
     downloaded = 0
     generated_md = 0
     for pdf_url, identifier in pdfs:
+        issue_pdf_path = day_dir / f"{identifier}.pdf" if len(pdfs) > 1 else pdf_path
+        issue_md_path = issue_pdf_path.with_suffix(".md")
         try:
-            await download_pdf(session, pdf_url, pdf_path)
-            downloaded += 1
-            generated_md += int(await ensure_markdown(pdf_path, md_path))
+            if not issue_pdf_path.exists():
+                await download_pdf(session, pdf_url, issue_pdf_path)
+                downloaded += 1
+            generated_md += int(await ensure_markdown(issue_pdf_path, issue_md_path))
         except NETWORK_ERRORS as error:
             print(f"Failed to download {identifier} for {date_str}: {error}")
             return downloaded, generated_md, "error"
 
-    return downloaded, generated_md, "success"
+    status: Status = "success" if downloaded or generated_md else "cached"
+    return downloaded, generated_md, status
 
 
 async def download_boe_pdfs(

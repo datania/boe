@@ -62,6 +62,62 @@ class DownloadTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result, (0, 0, "no_boe"))
 
+    async def test_preserves_multiple_issues_for_one_date(self) -> None:
+        api_response = {
+            "data": {
+                "sumario": {
+                    "diario": [
+                        {
+                            "sumario_diario": {
+                                "identificador": "BOE-S-2026-210",
+                                "url_pdf": {"texto": "https://files.test/210.pdf"},
+                            }
+                        },
+                        {
+                            "sumario_diario": {
+                                "identificador": "BOE-S-2026-209",
+                                "url_pdf": {"texto": "https://files.test/209.pdf"},
+                            }
+                        },
+                    ]
+                }
+            }
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.host == "www.boe.es":
+                return httpx.Response(200, request=request, json=api_response)
+            return httpx.Response(200, request=request, content=b"pdf")
+
+        async def ensure_markdown(pdf_path: Path, md_path: Path) -> bool:
+            md_path.write_text(pdf_path.name)
+            return True
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(boe, "ensure_markdown", side_effect=ensure_markdown),
+        ):
+            transport = httpx.MockTransport(handler)
+            async with httpx.AsyncClient(transport=transport) as session:
+                result = await boe.process_date(
+                    session, date(2026, 8, 26), Path(directory)
+                )
+
+            files = sorted(
+                path.name for path in Path(directory).rglob("*") if path.is_file()
+            )
+
+        self.assertEqual(result, (2, 2, "success"))
+        self.assertEqual(
+            files,
+            [
+                "BOE-S-2026-209.md",
+                "BOE-S-2026-209.pdf",
+                "BOE-S-2026-210.md",
+                "BOE-S-2026-210.pdf",
+            ],
+        )
+
     async def test_isolates_unexpected_date_failure(self) -> None:
         async def process_date(
             session: httpx.AsyncClient, day: date, output_dir: Path
